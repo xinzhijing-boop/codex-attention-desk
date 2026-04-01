@@ -1088,6 +1088,14 @@ function formatSessionLabel(thread: ThreadSessionView): string {
     return compactWorkspaceLabel(basename(thread.cwd));
   }
 
+  if (thread.sessionLabel) {
+    return thread.sessionLabel;
+  }
+
+  if (thread.lastPreview) {
+    return thread.lastPreview;
+  }
+
   if (thread.sourceLabel) {
     return normalizeSessionSourceLabel(thread.sourceLabel);
   }

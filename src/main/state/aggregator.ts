@@ -110,6 +110,7 @@ export class MonitorStateAggregator {
       .map<ThreadSessionView>((session) => ({
         sourceId: session.sourceId,
         sourceLabel: session.sourceLabel,
+        sessionLabel: session.sessionLabel,
         threadId: session.threadId,
         cwd: session.cwd,
         baseState: session.baseState,
@@ -151,11 +152,16 @@ export class MonitorStateAggregator {
     session.updatedAt = event.timestamp;
     session.sourceId = event.sourceId;
     session.sourceLabel = event.sourceLabel;
+    if (event.sessionLabel) {
+      session.sessionLabel = event.sessionLabel;
+    }
     session.eventCount += 1;
     session.lastEventKind = event.kind;
     session.lastItemType = event.itemType;
     session.lastDelta = event.delta;
-    session.lastPreview = event.preview;
+    if (event.preview) {
+      session.lastPreview = event.preview;
+    }
     session.lastError = event.error;
 
     if (event.cwd) {
@@ -288,6 +294,7 @@ function createThreadSession(threadId: string, timestamp: string): ThreadSession
   return {
     sourceId: undefined,
     sourceLabel: undefined,
+    sessionLabel: undefined,
     threadId,
     cwd: undefined,
     baseState: "idle",

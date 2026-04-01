@@ -119,6 +119,7 @@ export interface MonitorEvent {
   kind: string;
   sourceId?: string;
   sourceLabel?: string;
+  sessionLabel?: string;
   cwd?: string;
   stateHint?: DeskPetState;
   threadId?: string;
@@ -141,6 +142,7 @@ export interface MonitorEvent {
 export interface ThreadSessionView {
   sourceId?: string;
   sourceLabel?: string;
+  sessionLabel?: string;
   threadId: string;
   cwd?: string;
   baseState: DeskPetState;

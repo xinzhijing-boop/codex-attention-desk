@@ -30,10 +30,12 @@ interface SessionFileState {
   offset: number;
   sessionId?: string;
   cwd?: string;
+  sessionLabel?: string;
   currentTurnId?: string;
   sourceLabel: string;
   lastEventAt?: string;
   lastSeenMs: number;
+  bootstrapScanned?: boolean;
   turnModes: Map<string, string>;
 }
 
@@ -42,6 +44,7 @@ type EventListener = (event: MonitorEvent) => void | Promise<void>;
 const DEFAULT_SCAN_INTERVAL_MS = 1_500;
 const DEFAULT_ACTIVE_WINDOW_MS = 30 * 60 * 1_000;
 const INITIAL_TAIL_BYTES = 256 * 1024;
+const INITIAL_HEAD_BYTES = 64 * 1024;
 
 export class SessionFileMonitor {
   private readonly options: SessionFileMonitorResolvedOptions;
@@ -170,6 +173,7 @@ export class SessionFileMonitor {
             offset: Math.max(0, stats.size - INITIAL_TAIL_BYTES),
             sourceLabel: basename(path),
             lastSeenMs: stats.mtimeMs,
+            bootstrapScanned: false,
             turnModes: new Map<string, string>()
           } satisfies SessionFileState);
 
@@ -192,6 +196,15 @@ export class SessionFileMonitor {
 
   private async readAppendedRecords(fileState: SessionFileState): Promise<void> {
     const contents = await readFile(fileState.path, "utf8");
+
+    if (!fileState.bootstrapScanned && fileState.offset > 0) {
+      const bootstrapEvents = bootstrapSessionMetadata(fileState, contents);
+      for (const event of bootstrapEvents) {
+        await this.emitEvent(event);
+      }
+      fileState.bootstrapScanned = true;
+    }
+
     if (contents.length <= fileState.offset) {
       return;
     }
@@ -241,6 +254,53 @@ function parseSessionRecord(line: string): SessionRecord | undefined {
   } catch {
     return undefined;
   }
+}
+
+function bootstrapSessionMetadata(
+  fileState: SessionFileState,
+  contents: string
+): MonitorEvent[] {
+  const headChunk = contents.slice(0, Math.min(contents.length, INITIAL_HEAD_BYTES));
+  const lines = headChunk.split("\n").filter(Boolean);
+  const events: MonitorEvent[] = [];
+
+  for (const line of lines) {
+    const record = parseSessionRecord(line);
+    if (!record) {
+      continue;
+    }
+
+    const mapped = mapSessionRecordToEvents(record, fileState).filter(
+      (event) =>
+        event.kind === "thread.started" ||
+        (event.kind === "user.message" && Boolean(event.sessionLabel))
+    );
+
+    events.push(...mapped);
+
+    if (fileState.cwd && fileState.sessionLabel) {
+      break;
+    }
+  }
+
+  return dedupeBootstrapEvents(events);
+}
+
+function dedupeBootstrapEvents(events: MonitorEvent[]): MonitorEvent[] {
+  const seen = new Set<string>();
+  const result: MonitorEvent[] = [];
+
+  for (const event of events) {
+    const key = `${event.kind}:${event.threadId ?? ""}:${event.turnId ?? ""}:${event.sessionLabel ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(event);
+  }
+
+  return result;
 }
 
 function mapSessionRecordToEvents(
@@ -340,19 +400,15 @@ function mapSessionRecordToEvents(
         ].filter((value): value is MonitorEvent => Boolean(value));
       case "user_message":
         return [
-          {
+          buildUserMessageEvent({
             timestamp,
-            kind: "user.message",
-            threadId: sessionId,
+            sessionId,
             turnId,
-            cwd: fileState.cwd,
-            messageRole: "user",
-            messageText: getString(payload, "message"),
-            sourceId: `auto:${sessionId}`,
-            sourceLabel: fileState.sourceLabel,
+            text: getString(payload, "message"),
+            fileState,
             raw: record
-          }
-        ];
+          })
+        ].filter((value): value is MonitorEvent => Boolean(value));
       case "task_complete":
         return [
           {
@@ -437,19 +493,15 @@ function mapSessionRecordToEvents(
 
         if (role === "user") {
           return [
-            {
+            buildUserMessageEvent({
               timestamp,
-              kind: "user.message",
-              threadId: sessionId,
+              sessionId,
               turnId,
-              cwd: fileState.cwd,
-              messageRole: role,
-              messageText: text,
-              sourceId: `auto:${sessionId}`,
-              sourceLabel: fileState.sourceLabel,
+              text,
+              fileState,
               raw: record
-            }
-          ];
+            })
+          ].filter((value): value is MonitorEvent => Boolean(value));
         }
 
         return [];
@@ -552,6 +604,37 @@ function buildAssistantMessageEvent(input: {
     delta: text,
     stateHint: attention ? "approval" : "typing",
     attention,
+    sourceId: `auto:${input.sessionId}`,
+    sourceLabel: input.fileState.sourceLabel,
+    raw: input.raw
+  };
+}
+
+function buildUserMessageEvent(input: {
+  timestamp: string;
+  sessionId: string;
+  turnId?: string;
+  text?: string;
+  fileState: SessionFileState;
+  raw: unknown;
+}): MonitorEvent | undefined {
+  const text = normalizeMessageText(input.text);
+  if (!text) {
+    return undefined;
+  }
+
+  const sessionLabel = captureSessionLabel(input.fileState, text);
+
+  return {
+    timestamp: input.timestamp,
+    kind: "user.message",
+    threadId: input.sessionId,
+    turnId: input.turnId,
+    cwd: input.fileState.cwd,
+    sessionLabel,
+    messageRole: "user",
+    messageText: text,
+    preview: sessionLabel,
     sourceId: `auto:${input.sessionId}`,
     sourceLabel: input.fileState.sourceLabel,
     raw: input.raw
@@ -764,6 +847,52 @@ function summarizeMessage(value: string): string {
     return singleLine;
   }
   return `${singleLine.slice(0, 157)}...`;
+}
+
+function captureSessionLabel(fileState: SessionFileState, text: string): string | undefined {
+  const summary = summarizeSessionLabel(text);
+  if (!summary) {
+    return fileState.sessionLabel;
+  }
+
+  if (!fileState.sessionLabel) {
+    fileState.sessionLabel = summary;
+  }
+
+  return fileState.sessionLabel;
+}
+
+function summarizeSessionLabel(value: string): string | undefined {
+  const summary = summarizeMessage(value);
+  if (!isMeaningfulSessionLabel(summary)) {
+    return undefined;
+  }
+
+  if (summary.length <= 56) {
+    return summary;
+  }
+
+  return `${summary.slice(0, 53).trimEnd()}...`;
+}
+
+function isMeaningfulSessionLabel(value: string): boolean {
+  if (!value || value.length < 12) {
+    return false;
+  }
+
+  if (/^#\s*AGENTS\.md instructions/i.test(value)) {
+    return false;
+  }
+
+  if (/^<environment_context>/i.test(value)) {
+    return false;
+  }
+
+  if (/^<permissions instructions>/i.test(value)) {
+    return false;
+  }
+
+  return /[A-Za-z\u4e00-\u9fff]/.test(value);
 }
 
 function looksLikeUserPrompt(value: string): boolean {
