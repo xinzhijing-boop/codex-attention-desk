@@ -79,9 +79,9 @@ const SIZES: Record<SizeKey, { width: number; height: number }> = {
 
 const BUBBLE_EXTRA_HEIGHT: Record<BubbleDetailMode, number> = {
   basic: 0,
-  detailed: 52
+  detailed: 44
 };
-const BUBBLE_SPACING_BASELINE_SHIFT_PX = 60;
+const BUBBLE_SPACING_BASELINE_SHIFT_PX = 28;
 const DEFAULT_BUBBLE_SPACING_PX = 0;
 const MIN_BUBBLE_SPACING_PX = -20;
 const MAX_BUBBLE_SPACING_PX = 180;
