@@ -205,6 +205,8 @@ export interface BubbleConfig {
 export interface BubbleRenderMeta {
   badgeOverride?: string;
   titleOverride?: string;
+  subtitleOverride?: string;
+  subtitleMode?: "static" | "marquee";
   detailOverride?: string;
 }
 

@@ -2,7 +2,7 @@ import type { BrowserWindow as BrowserWindowType, Tray as TrayType } from "elect
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { CodexRuntime } from "./runtime.js";
 import { SettingsStore, type PersistedSettings, type SizeKey } from "./settingsStore.js";
 import { DashboardServer } from "../main/dashboard/dashboardServer.js";
@@ -13,7 +13,8 @@ import type {
   BubbleDetailMode,
   BubbleRenderMeta,
   DesktopPetSnapshot,
-  DeskPetState
+  DeskPetState,
+  ThreadSessionView
 } from "../shared/types.js";
 const {
   app,
@@ -110,6 +111,18 @@ const WAKE_DURATION = 1_500;
 const SNAP_TOLERANCE = 30;
 const MINI_OFFSET_RATIO = 0.486;
 const PEEK_OFFSET = 25;
+const SESSION_SUBTITLE_RECENT_MS = 20 * 60 * 1000;
+const ACTIVE_THREAD_STATES = new Set<DeskPetState>([
+  "thinking",
+  "typing",
+  "working",
+  "editing",
+  "subagent_one",
+  "subagent_many",
+  "approval",
+  "error",
+  "success"
+]);
 
 const OBJ_SCALE_W = 1.9;
 const OBJ_SCALE_H = 1.3;
@@ -986,10 +999,13 @@ function getAppearanceConfig(): AppearanceConfig {
 }
 
 function buildBubbleRenderMeta(snapshot: DesktopPetSnapshot): BubbleRenderMeta {
+  const sessionSubtitle = buildSessionSubtitleMeta(snapshot.monitor.threads);
+
   if (snapshot.attention) {
     return {
       badgeOverride: snapshot.attention.kind === "plan_ready" ? "Plan" : "Alert",
       titleOverride: snapshot.attention.title,
+      ...sessionSubtitle,
       detailOverride:
         bubbleDetailMode === "detailed"
           ? [snapshot.attention.detail, snapshot.attention.sourceLabel && `source ${formatBubbleSource(snapshot.attention.sourceLabel)}`]
@@ -1000,12 +1016,12 @@ function buildBubbleRenderMeta(snapshot: DesktopPetSnapshot): BubbleRenderMeta {
   }
 
   if (bubbleDetailMode !== "detailed") {
-    return {};
+    return sessionSubtitle;
   }
 
   const [thread] = snapshot.monitor.threads;
   if (!thread) {
-    return {};
+    return sessionSubtitle;
   }
 
   const detailParts = [
@@ -1015,8 +1031,88 @@ function buildBubbleRenderMeta(snapshot: DesktopPetSnapshot): BubbleRenderMeta {
   ].filter((value): value is string => Boolean(value));
 
   return {
+    ...sessionSubtitle,
     detailOverride: detailParts.join(" | ")
   };
+}
+
+function buildSessionSubtitleMeta(
+  threads: ThreadSessionView[]
+): Pick<BubbleRenderMeta, "subtitleOverride" | "subtitleMode"> {
+  const labels = getRelevantSessionLabels(threads);
+  if (labels.length === 0) {
+    return {};
+  }
+
+  const subtitle = labels.join("  •  ");
+  return {
+    subtitleOverride: subtitle,
+    subtitleMode: labels.length > 1 || subtitle.length > 18 ? "marquee" : "static"
+  };
+}
+
+function getRelevantSessionLabels(threads: ThreadSessionView[]): string[] {
+  const now = Date.now();
+  const activeThreads = threads.filter((thread) => isRelevantSessionThread(thread, now));
+  const pool = activeThreads.length > 0 ? activeThreads : threads.slice(0, 3);
+  const labels: string[] = [];
+
+  for (const thread of pool) {
+    const label = formatSessionLabel(thread);
+    if (!label || labels.includes(label)) {
+      continue;
+    }
+
+    labels.push(label);
+    if (labels.length >= 4) {
+      break;
+    }
+  }
+
+  return labels;
+}
+
+function isRelevantSessionThread(thread: ThreadSessionView, now: number): boolean {
+  const updatedMs = Date.parse(thread.updatedAt);
+  const isRecent = Number.isFinite(updatedMs) && now - updatedMs <= SESSION_SUBTITLE_RECENT_MS;
+  const isActive =
+    ACTIVE_THREAD_STATES.has(thread.displayState) ||
+    thread.activeFlags.length > 0 ||
+    Boolean(thread.attention);
+
+  return isRecent && isActive;
+}
+
+function formatSessionLabel(thread: ThreadSessionView): string {
+  if (thread.cwd) {
+    return compactWorkspaceLabel(basename(thread.cwd));
+  }
+
+  if (thread.sourceLabel) {
+    return formatBubbleSource(thread.sourceLabel);
+  }
+
+  return `Thread ${formatShortId(thread.threadId)}`;
+}
+
+function compactWorkspaceLabel(value: string): string {
+  if (value === "ProjectManagerApp") {
+    return "PMapp";
+  }
+
+  if (value.length <= 16) {
+    return value;
+  }
+
+  if (/^[A-Z][A-Za-z0-9]+App$/.test(value)) {
+    const prefix = value.replace(/App$/, "");
+    const initials = [...prefix.matchAll(/[A-Z]/g)].map((match) => match[0]).join("");
+    if (initials.length >= 2) {
+      return `${initials}app`;
+    }
+  }
+
+  return `${value.slice(0, 8)}...${value.slice(-5)}`;
 }
 
 function startMainTick(): void {

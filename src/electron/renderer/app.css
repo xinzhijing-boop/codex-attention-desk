@@ -99,7 +99,11 @@ body {
   z-index: 2;
   width: min(208px, calc(100% - 24px));
   max-width: calc(100% - 24px);
-  padding: 8px 10px 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 12px 11px;
   border: 1px solid var(--bubble-border);
   border-radius: 14px;
   background:
@@ -129,27 +133,49 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 18px;
+  min-height: 17px;
   padding: 0 7px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.75);
   color: var(--accent);
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 #status-title {
-  margin-top: 5px;
   color: var(--text-main);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.15;
+}
+
+#status-subtitle {
+  width: 100%;
+  overflow: hidden;
+  color: var(--text-subtle);
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+#status-subtitle.is-hidden {
+  display: none;
+}
+
+#status-subtitle-track {
+  display: inline-block;
+  min-width: 100%;
+  transform: translateX(0);
+}
+
+#status-subtitle.is-marquee #status-subtitle-track {
+  animation: subtitleMarquee var(--marquee-duration, 7s) ease-in-out infinite alternate;
 }
 
 #status-detail {
-  margin-top: 2px;
   color: var(--text-subtle);
   font-size: 8px;
   line-height: 1.2;
@@ -309,10 +335,22 @@ body {
   }
 }
 
+@keyframes subtitleMarquee {
+  0%,
+  14% {
+    transform: translateX(0);
+  }
+  86%,
+  100% {
+    transform: translateX(calc(-1 * var(--marquee-shift, 0px)));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scene-rings,
   #clawd,
-  #clawd.state-enter {
+  #clawd.state-enter,
+  #status-subtitle.is-marquee #status-subtitle-track {
     animation: none !important;
   }
 }

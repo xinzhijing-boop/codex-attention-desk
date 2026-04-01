@@ -2,6 +2,8 @@ const container = document.getElementById("pet-container");
 const scene = document.getElementById("scene");
 const statusBubble = document.getElementById("status-bubble");
 const statusTitle = document.getElementById("status-title");
+const statusSubtitle = document.getElementById("status-subtitle");
+const statusSubtitleTrack = document.getElementById("status-subtitle-track");
 const statusDetail = document.getElementById("status-detail");
 const statusBadge = document.getElementById("status-badge");
 
@@ -547,10 +549,14 @@ function renderBubble(state, meta) {
   statusBadge.textContent = meta?.badgeOverride ?? stateMeta.badge;
   statusTitle.textContent = meta?.titleOverride ?? stateMeta.title;
 
+  const defaultSubtitle = meta?.subtitleOverride ?? "";
+  const subtitleText =
+    languageExpanded && stateMeta.titleZh ? stateMeta.titleZh : defaultSubtitle;
+  const subtitleMode =
+    subtitleText === defaultSubtitle ? meta?.subtitleMode ?? "static" : "static";
+  renderSubtitle(subtitleText, subtitleMode);
+
   const detailParts = [];
-  if (languageExpanded && stateMeta.titleZh) {
-    detailParts.push(stateMeta.titleZh);
-  }
   if (bubbleConfig.detailMode === "detailed") {
     detailParts.push(meta?.detailOverride ?? stateMeta.detail);
     if (languageExpanded && stateMeta.detailZh) {
@@ -621,6 +627,43 @@ function hideBubble() {
     clearTimeout(bubbleTimer);
     bubbleTimer = null;
   }
+}
+
+function renderSubtitle(text, mode) {
+  const normalized = typeof text === "string" ? text.trim() : "";
+
+  if (!normalized) {
+    statusSubtitle.classList.add("is-hidden");
+    statusSubtitle.classList.remove("is-marquee");
+    statusSubtitle.style.removeProperty("--marquee-shift");
+    statusSubtitle.style.removeProperty("--marquee-duration");
+    statusSubtitleTrack.textContent = "";
+    return;
+  }
+
+  statusSubtitle.classList.remove("is-hidden");
+  statusSubtitleTrack.textContent = normalized;
+  statusSubtitle.classList.remove("is-marquee");
+  statusSubtitle.style.removeProperty("--marquee-shift");
+  statusSubtitle.style.removeProperty("--marquee-duration");
+
+  if (mode !== "marquee") {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    const overflow = Math.ceil(statusSubtitleTrack.scrollWidth - statusSubtitle.clientWidth);
+    if (overflow <= 8) {
+      return;
+    }
+
+    statusSubtitle.classList.add("is-marquee");
+    statusSubtitle.style.setProperty("--marquee-shift", `${overflow}px`);
+    statusSubtitle.style.setProperty(
+      "--marquee-duration",
+      `${Math.max(6.5, Math.min(16, 4.5 + overflow / 22))}s`
+    );
+  });
 }
 
 function applyBubbleLayout() {

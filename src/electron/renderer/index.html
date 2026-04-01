@@ -10,9 +10,12 @@
     <main id="scene" data-state="disconnected">
       <div class="scene-glow" aria-hidden="true"></div>
       <div class="scene-rings" aria-hidden="true"></div>
-      <div id="status-bubble" aria-live="polite" aria-atomic="true" title="Click to show Chinese translation">
+      <div id="status-bubble" aria-live="polite" aria-atomic="true" title="Click to toggle Chinese and session subtitle">
         <span id="status-badge">Codex</span>
         <p id="status-title">Connecting</p>
+        <div id="status-subtitle" aria-hidden="true">
+          <div id="status-subtitle-track">ProjectManagerApp</div>
+        </div>
         <p id="status-detail">连接中</p>
       </div>
       <div id="pet-container">
