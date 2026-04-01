@@ -58,6 +58,11 @@ interface HitBox {
   h: number;
 }
 
+interface MiniDockState {
+  displayId: number;
+  side: "left" | "right";
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, "../../..");
@@ -126,6 +131,7 @@ let cursorPollingPaused = false;
 let mouseOverPet = false;
 let miniMode = false;
 let miniPeeked = false;
+let miniDock: MiniDockState | null = null;
 let preMiniBounds: Electron.Rectangle | null = null;
 let sizeReferenceScaleFactor = 1;
 let syncingWindowScale = false;
@@ -623,7 +629,10 @@ function syncWindowSizeForCurrentDisplay(anchor: "bottom-center" | "top-left"): 
   }
 
   const bounds = mainWindow.getBounds();
-  const display = screen.getDisplayMatching(bounds);
+  const display =
+    miniMode && miniDock
+      ? resolveMiniDockDisplay(miniDock, bounds)
+      : screen.getDisplayMatching(bounds);
   const next = getWindowSize(currentSize, display);
 
   if (bounds.width === next.width && bounds.height === next.height) {
@@ -713,9 +722,20 @@ function registerIpc(): void {
 
     const bounds = mainWindow.getBounds();
     const display = screen.getDisplayMatching(bounds);
+    const leftEdge = display.workArea.x;
     const rightEdge = display.workArea.x + display.workArea.width;
-    if (bounds.x + bounds.width >= rightEdge - SNAP_TOLERANCE) {
-      enterMiniMode();
+    const dockSide =
+      bounds.x <= leftEdge + SNAP_TOLERANCE
+        ? "left"
+        : bounds.x + bounds.width >= rightEdge - SNAP_TOLERANCE
+        ? "right"
+        : null;
+
+    if (dockSide) {
+      enterMiniMode({
+        displayId: display.id,
+        side: dockSide
+      });
     }
   });
 
@@ -1396,7 +1416,7 @@ async function ensureDashboardServer(): Promise<string | null> {
   }
 }
 
-function enterMiniMode(): void {
+function enterMiniMode(nextDock?: MiniDockState): void {
   if (!mainWindow || miniMode) {
     return;
   }
@@ -1404,6 +1424,7 @@ function enterMiniMode(): void {
   miniMode = true;
   miniPeeked = false;
   preMiniBounds = mainWindow.getBounds();
+  miniDock = nextDock ?? getMiniDockForBounds(preMiniBounds);
   setMiniBounds(false);
   refreshFromRuntime();
 }
@@ -1415,6 +1436,7 @@ function exitMiniMode(): void {
 
   miniMode = false;
   miniPeeked = false;
+  miniDock = null;
 
   if (preMiniBounds) {
     mainWindow.setBounds(preMiniBounds);
@@ -1430,6 +1452,7 @@ function releaseMiniModeForDrag(): void {
 
   miniMode = false;
   miniPeeked = false;
+  miniDock = null;
   preMiniBounds = null;
   refreshFromRuntime();
 }
@@ -1440,17 +1463,47 @@ function setMiniBounds(peek: boolean): void {
   }
 
   const bounds = mainWindow.getBounds();
-  const display = screen.getDisplayMatching(bounds);
+  const dock = miniDock ?? getMiniDockForBounds(preMiniBounds ?? bounds);
+  const display = resolveMiniDockDisplay(dock, bounds);
   const hiddenX =
-    display.workArea.x +
-    display.workArea.width -
-    Math.round(bounds.width * MINI_OFFSET_RATIO);
+    dock.side === "left"
+      ? display.workArea.x - Math.round(bounds.width * (1 - MINI_OFFSET_RATIO))
+      : display.workArea.x +
+        display.workArea.width -
+        Math.round(bounds.width * MINI_OFFSET_RATIO);
+  const peekX = dock.side === "left" ? hiddenX + PEEK_OFFSET : hiddenX - PEEK_OFFSET;
+
+  miniDock = {
+    displayId: display.id,
+    side: dock.side
+  };
 
   mainWindow.setBounds({
     ...bounds,
-    x: peek ? hiddenX - PEEK_OFFSET : hiddenX,
+    x: peek ? peekX : hiddenX,
     y: bounds.y
   });
+}
+
+function getMiniDockForBounds(bounds: Electron.Rectangle): MiniDockState {
+  const display = screen.getDisplayMatching(bounds);
+  const leftDistance = Math.abs(bounds.x - display.workArea.x);
+  const rightDistance = Math.abs(
+    display.workArea.x + display.workArea.width - (bounds.x + bounds.width)
+  );
+
+  return {
+    displayId: display.id,
+    side: leftDistance <= rightDistance ? "left" : "right"
+  };
+}
+
+function resolveMiniDockDisplay(
+  dock: MiniDockState,
+  fallbackBounds: Electron.Rectangle
+): Electron.Display {
+  const match = screen.getAllDisplays().find((display) => display.id === dock.displayId);
+  return match ?? screen.getDisplayMatching(fallbackBounds);
 }
 
 function setWindowSize(size: SizeKey): void {
@@ -1461,7 +1514,10 @@ function setWindowSize(size: SizeKey): void {
   }
 
   const currentBounds = mainWindow.getBounds();
-  const display = screen.getDisplayMatching(currentBounds);
+  const display =
+    miniMode && miniDock
+      ? resolveMiniDockDisplay(miniDock, currentBounds)
+      : screen.getDisplayMatching(currentBounds);
   const next = getWindowSize(size, display);
   currentSize = size;
 
@@ -1488,7 +1544,10 @@ function updateWindowLayout(): void {
   }
 
   const currentBounds = mainWindow.getBounds();
-  const display = screen.getDisplayMatching(currentBounds);
+  const display =
+    miniMode && miniDock
+      ? resolveMiniDockDisplay(miniDock, currentBounds)
+      : screen.getDisplayMatching(currentBounds);
   const next = getWindowSize(currentSize, display);
   const x = Math.round(currentBounds.x + currentBounds.width / 2 - next.width / 2);
   const y = Math.round(currentBounds.y + currentBounds.height - next.height);
