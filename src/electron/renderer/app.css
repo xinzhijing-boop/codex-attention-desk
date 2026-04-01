@@ -30,11 +30,11 @@ body {
   --text-main: #2a2119;
   --text-subtle: rgba(42, 33, 25, 0.7);
   --bubble-safe-space: 0px;
-  --pet-width: 190%;
-  --pet-height: 130%;
-  --pet-bottom: -16%;
-  --stage-width: 56%;
-  --stage-height: 16%;
+  --pet-width: 143%;
+  --pet-height: 98%;
+  --pet-bottom: -12%;
+  --stage-width: 42%;
+  --stage-height: 12%;
   --pet-tint-filter: none;
   position: relative;
   width: 100%;
@@ -43,27 +43,27 @@ body {
 }
 
 #scene[data-size="S"] {
-  --pet-width: 156%;
-  --pet-height: 108%;
-  --pet-bottom: -10%;
-  --stage-width: 46%;
-  --stage-height: 12%;
+  --pet-width: 117%;
+  --pet-height: 81%;
+  --pet-bottom: -8%;
+  --stage-width: 35%;
+  --stage-height: 9%;
 }
 
 #scene[data-size="M"] {
-  --pet-width: 190%;
-  --pet-height: 130%;
-  --pet-bottom: -16%;
-  --stage-width: 56%;
-  --stage-height: 16%;
+  --pet-width: 143%;
+  --pet-height: 98%;
+  --pet-bottom: -12%;
+  --stage-width: 42%;
+  --stage-height: 12%;
 }
 
 #scene[data-size="L"] {
-  --pet-width: 228%;
-  --pet-height: 156%;
-  --pet-bottom: -22%;
-  --stage-width: 66%;
-  --stage-height: 18%;
+  --pet-width: 171%;
+  --pet-height: 117%;
+  --pet-bottom: -16%;
+  --stage-width: 50%;
+  --stage-height: 14%;
 }
 
 .scene-glow,
