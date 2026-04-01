@@ -498,8 +498,8 @@ function renderBubble(state, meta) {
     autoHideMs: 1800
   };
 
-  statusBadge.textContent = stateMeta.badge;
-  statusTitle.textContent = stateMeta.title;
+  statusBadge.textContent = meta?.badgeOverride ?? stateMeta.badge;
+  statusTitle.textContent = meta?.titleOverride ?? stateMeta.title;
   statusDetail.textContent = meta?.detailOverride ?? stateMeta.detail;
   statusDetail.style.display = bubbleConfig.detailMode === "detailed" ? "" : "none";
   statusBubble.classList.remove("is-hidden");

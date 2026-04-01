@@ -1,10 +1,11 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { createRequire } from "node:module";
 import type {
   AppearanceConfig,
   BubbleConfig,
   BubbleRenderMeta,
   DesktopPetSnapshot
 } from "../shared/types.js";
+const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   showContextMenu(): void {

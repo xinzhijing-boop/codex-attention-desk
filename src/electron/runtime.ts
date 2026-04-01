@@ -1,4 +1,5 @@
 import type {
+  AttentionKind,
   AppServerConnectionConfig,
   ConnectionDebugInfo,
   DesktopPetSnapshot,
@@ -109,7 +110,8 @@ export class CodexRuntime {
       clickThrough: this.clickThrough,
       errorMessage: this.errorMessage,
       connection: this.getConnectionDebugInfo(),
-      monitor: this.aggregator.getSnapshot()
+      monitor: this.aggregator.getSnapshot(),
+      attention: this.aggregator.getAttentionSnapshot()
     };
   }
 
@@ -122,6 +124,24 @@ export class CodexRuntime {
     const activeMonitors = this.monitors;
     this.monitors = [];
     await Promise.all(activeMonitors.map((monitor) => monitor.stop()));
+  }
+
+  raiseManualAttention(input: {
+    title: string;
+    detail?: string;
+    kind?: AttentionKind;
+    cwd?: string;
+  }): void {
+    this.aggregator.setManualAttention({
+      kind: input.kind ?? "manual",
+      title: input.title,
+      detail: input.detail,
+      cwd: input.cwd
+    });
+  }
+
+  clearManualAttention(): void {
+    this.aggregator.clearManualAttention();
   }
 
   private emitSnapshot(): void {

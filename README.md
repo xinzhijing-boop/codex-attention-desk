@@ -1,17 +1,32 @@
-# Codex on Desk
+# Codex Attention Desk
 
-一个基于 Electron 的桌面桌宠，用来实时跟踪本机 Codex 会话状态，并把状态映射成小机器人和状态气泡。
+一个基于 Electron 的桌面桌宠，用来实时跟踪本机 Codex 会话状态，并在 Codex 需要你注意时主动弹出提醒。
 
-本项目会驻留在桌面上，根据 Codex 当前状态展示不同反馈，例如思考、执行、错误、完成、休眠等；也支持自动发现本机会话、连接外部 `codex app-server`，以及通过托盘配置外观与展示细节。
+这个仓库基于开源项目 `G-ShiSi/codex-on-desk` 做了本地定制，重点补强了 Windows + 本地 `.codex/sessions` 工作流：
+
+- 更完整地解析本机 Codex JSONL 会话记录，而不只是粗略的开始/结束事件
+- 自动识别需要人工注意的场景
+  - `request_user_input`
+  - Plan mode 下的提问或 `<proposed_plan>`
+  - 普通模式下明显在等你回复的 assistant 问句
+- 常驻本地 hook 服务
+  - `POST /api/attention`
+  - `POST /api/attention/clear`
+  - `POST /api/open`
+- 支持在提醒出现时直接运行命令来“弹出 Codex”，默认会尝试打开对应工作目录的 VS Code
+- 托盘里可配置自动弹出、打开命令、手动测试提醒
 
 ## 看板预览
 
-![Codex on Desk dashboard](docs/screenshots/dashboard.png)
+![Codex Attention Desk dashboard](docs/screenshots/dashboard.png)
 
 ## 功能
 
 - 实时状态感知
   - 根据 Codex 当前会话状态驱动桌宠动画和气泡文本
+- 注意力提醒
+  - 当 Codex 在等你审批、等你回答 plan 问题、或发出明确追问时，桌宠会进入提醒状态
+  - 可选自动运行“打开 Codex”命令
 - 三种连接模式
   - `auto`：扫描 `~/.codex/sessions/**/*.jsonl`
   - `managed`：由应用自行启动 `codex app-server`
@@ -31,6 +46,9 @@
   - 透明桌面窗口
   - 支持拖拽
   - 支持双击触发互动反馈
+- 本地 Hook
+  - 内置 HTTP 服务默认优先监听 `http://127.0.0.1:4580`
+  - 可被 PowerShell、快捷键工具、自动化脚本直接调用
 - 设置持久化
   - 常用 UI 配置会保存在本地 `settings.json`
 - 打包与分发
@@ -77,17 +95,59 @@ PowerShell 同理可写成：
 npm.cmd run electron
 ```
 
-启动状态面板：
-
-```bash
-npm run dashboard
-```
-
 默认行为：
 
 - 如果没有显式配置外部地址，会优先进入 `auto` 模式
 - `auto` 模式会尝试发现最近活跃的本机 Codex 会话
+- 本地 hook / dashboard 服务会在应用启动时一起启动
 - UI 相关设置在重启后会保留
+
+## Hook 用法
+
+应用启动后，会默认监听：
+
+```text
+http://127.0.0.1:4580
+```
+
+手动触发提醒：
+
+```powershell
+.\scripts\hook-attention.ps1 -Title "Codex needs input" -Detail "Plan question waiting" -Open
+```
+
+直接调用 HTTP：
+
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:4580/api/attention `
+  -ContentType "application/json" `
+  -Body '{"title":"Codex needs input","detail":"Review the proposed plan","open":true}'
+```
+
+清除手动提醒：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:4580/api/attention/clear
+```
+
+只执行“打开 Codex”命令：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:4580/api/open
+```
+
+如需固定端口，可设置：
+
+```bash
+CODEX_ATTENTION_PORT=4580
+```
+
+如需覆盖默认打开命令，可设置：
+
+```bash
+CODEX_ATTENTION_OPEN_COMMAND=code -r "C:\path\to\repo"
+```
 
 ## 连接模式
 
@@ -135,6 +195,9 @@ CODEX_APP_SERVER_URLS=ws://127.0.0.1:8765,ws://127.0.0.1:8766
 - 大小：`S` / `M` / `L`
 - 主题颜色：预设色或自定义十六进制颜色
 - 连接模式切换
+- 自动弹出 Codex 开关
+- 自定义“打开 Codex”命令
+- 手动测试 / 清除 attention hook
 - 测试 Prompt 触发
   - 仅 `managed` 模式可用
 
@@ -391,4 +454,3 @@ scripts/                 monitor / dashboard 启动脚本
 - 小红书账号：`鹿鹿🦌`
 
 我们深感荣幸能够在原项目的基础上构建新的功能与体验，并且在此对原项目的设计和代码表示由衷的感谢。所有原始设计和代码的版权归原作者所有。
-

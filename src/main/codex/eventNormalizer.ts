@@ -10,6 +10,7 @@ export function normalizeNotification(notification: JsonRpcNotification): Monito
         timestamp,
         kind: "thread.started",
         threadId: getString(params, "thread.id"),
+        cwd: getString(params, "thread.cwd"),
         status: getString(params, "thread.status.type"),
         preview: getString(params, "thread.preview"),
         raw: notification
@@ -17,13 +18,24 @@ export function normalizeNotification(notification: JsonRpcNotification): Monito
 
     case "thread/status/changed": {
       const activeFlags = getStringArray(params, "status.activeFlags");
+      const threadId = getString(params, "threadId");
       return {
         timestamp,
         kind: "thread.status.changed",
-        threadId: getString(params, "threadId"),
+        threadId,
         status: getString(params, "status.type"),
         activeFlags,
         stateHint: activeFlags.includes("waitingOnApproval") ? "approval" : undefined,
+        attention: activeFlags.includes("waitingOnApproval")
+          ? {
+              id: `approval:${timestamp}:${threadId ?? "unknown"}`,
+              kind: "waiting_on_approval",
+              source: "codex",
+              title: "Codex is waiting for approval",
+              detectedAt: timestamp,
+              threadId
+            }
+          : undefined,
         raw: notification
       };
     }

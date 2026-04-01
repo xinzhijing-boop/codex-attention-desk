@@ -1,4 +1,5 @@
 import type {
+  AttentionSnapshot,
   DeskPetState,
   MonitorEvent,
   MonitorSnapshot,
@@ -22,6 +23,7 @@ export class MonitorStateAggregator {
   private recentEvents: MonitorEvent[] = [];
   private readonly listeners = new Set<SnapshotListener>();
   private expiryTimer?: NodeJS.Timeout;
+  private manualAttention?: AttentionSnapshot;
 
   onSnapshot(listener: SnapshotListener): () => void {
     this.listeners.add(listener);
@@ -34,6 +36,7 @@ export class MonitorStateAggregator {
     this.serverPlatform = undefined;
     this.totalEvents = 0;
     this.updatedAt = undefined;
+    this.manualAttention = undefined;
     this.sessions.clear();
     this.recentEvents = [];
 
@@ -69,6 +72,32 @@ export class MonitorStateAggregator {
     this.emitSnapshot();
   }
 
+  setManualAttention(attention: Omit<AttentionSnapshot, "id" | "detectedAt" | "source">): void {
+    const detectedAt = new Date().toISOString();
+    this.manualAttention = {
+      ...attention,
+      id: `manual:${Date.now()}`,
+      detectedAt,
+      source: "hook"
+    };
+    this.updatedAt = detectedAt;
+    this.emitSnapshot();
+  }
+
+  clearManualAttention(): void {
+    if (!this.manualAttention) {
+      return;
+    }
+
+    this.manualAttention = undefined;
+    this.emitSnapshot();
+  }
+
+  getAttentionSnapshot(): AttentionSnapshot | undefined {
+    this.refreshExpiredStates();
+    return cloneAttention(this.selectActiveAttention());
+  }
+
   getSnapshot(): MonitorSnapshot {
     this.refreshExpiredStates();
 
@@ -82,6 +111,7 @@ export class MonitorStateAggregator {
         sourceId: session.sourceId,
         sourceLabel: session.sourceLabel,
         threadId: session.threadId,
+        cwd: session.cwd,
         baseState: session.baseState,
         displayState: session.displayState,
         status: session.status,
@@ -89,18 +119,23 @@ export class MonitorStateAggregator {
         currentTurnId: session.currentTurnId,
         lastEventKind: session.lastEventKind,
         lastItemType: session.lastItemType,
+        lastMessageRole: session.lastMessageRole,
+        lastMessageText: session.lastMessageText,
         lastDelta: session.lastDelta,
         lastPreview: session.lastPreview,
         lastError: session.lastError,
+        attention: cloneAttention(session.attention),
         eventCount: session.eventCount,
         updatedAt: session.updatedAt
       }));
+
+    const attention = this.selectActiveAttention();
 
     return {
       connected: this.connected,
       initialized: this.initialized,
       serverPlatform: this.serverPlatform,
-      currentState: selectGlobalState(threads),
+      currentState: attention ? "approval" : selectGlobalState(threads),
       totalEvents: this.totalEvents,
       updatedAt: this.updatedAt,
       threads,
@@ -123,6 +158,9 @@ export class MonitorStateAggregator {
     session.lastPreview = event.preview;
     session.lastError = event.error;
 
+    if (event.cwd) {
+      session.cwd = event.cwd;
+    }
     if (event.turnId) {
       session.currentTurnId = event.turnId;
     }
@@ -134,6 +172,35 @@ export class MonitorStateAggregator {
     }
     if (event.activeFlags) {
       session.activeFlags = event.activeFlags;
+    }
+    if (event.messageRole) {
+      session.lastMessageRole = event.messageRole;
+    }
+    if (event.messageText) {
+      session.lastMessageText = event.messageText;
+    }
+
+    if (event.attention) {
+      session.attention = cloneAttention(event.attention);
+    } else if (shouldClearAttention(session, event)) {
+      session.attention = undefined;
+    } else if (
+      event.kind === "thread.status.changed" &&
+      event.activeFlags?.includes("waitingOnApproval")
+    ) {
+      session.attention = {
+        id: `approval:${event.timestamp}:${threadId}`,
+        kind: "waiting_on_approval",
+        source: "codex",
+        title: "Codex is waiting for approval",
+        detail: buildApprovalDetail(event),
+        detectedAt: event.timestamp,
+        sourceId: event.sourceId,
+        sourceLabel: event.sourceLabel,
+        threadId,
+        turnId: event.turnId ?? session.currentTurnId,
+        cwd: session.cwd
+      };
     }
 
     const nextBaseState = deriveBaseState(session, event);
@@ -201,6 +268,20 @@ export class MonitorStateAggregator {
       listener(snapshot);
     }
   }
+
+  private selectActiveAttention(): AttentionSnapshot | undefined {
+    if (this.manualAttention) {
+      return this.manualAttention;
+    }
+
+    const sessionAttention = [...this.sessions.values()]
+      .map((session) => session.attention)
+      .filter((value): value is AttentionSnapshot => Boolean(value))
+      .sort((left, right) => Date.parse(right.detectedAt) - Date.parse(left.detectedAt))
+      .at(0);
+
+    return sessionAttention;
+  }
 }
 
 function createThreadSession(threadId: string, timestamp: string): ThreadSessionInternal {
@@ -208,11 +289,19 @@ function createThreadSession(threadId: string, timestamp: string): ThreadSession
     sourceId: undefined,
     sourceLabel: undefined,
     threadId,
+    cwd: undefined,
     baseState: "idle",
     displayState: "idle",
     status: "idle",
     activeFlags: [],
     lastEventKind: "thread.created",
+    lastItemType: undefined,
+    lastMessageRole: undefined,
+    lastMessageText: undefined,
+    lastDelta: undefined,
+    lastPreview: undefined,
+    lastError: undefined,
+    attention: undefined,
     eventCount: 0,
     updatedAt: timestamp,
     holdUntilMs: null
@@ -223,6 +312,10 @@ function deriveBaseState(
   session: ThreadSessionInternal,
   event: MonitorEvent
 ): DeskPetState | undefined {
+  if (event.attention) {
+    return "approval";
+  }
+
   if (event.kind === "thread.status.changed") {
     if (event.activeFlags?.includes("waitingOnApproval")) {
       return "approval";
@@ -231,7 +324,7 @@ function deriveBaseState(
       return "error";
     }
     if (event.status === "idle") {
-      return "idle";
+      return session.attention ? "approval" : "idle";
     }
     return undefined;
   }
@@ -257,7 +350,7 @@ function deriveBaseState(
     return event.stateHint;
   }
 
-  if (session.displayState === "approval" && !session.activeFlags.includes("waitingOnApproval")) {
+  if (session.displayState === "approval" && !session.attention) {
     return "idle";
   }
 
@@ -279,7 +372,8 @@ function transitionThreadState(
   if (
     session.displayState === "approval" &&
     nextBaseState !== "approval" &&
-    !session.activeFlags.includes("waitingOnApproval")
+    !session.activeFlags.includes("waitingOnApproval") &&
+    !session.attention
   ) {
     session.displayState = nextBaseState;
     session.holdUntilMs = getHoldUntilMs(nextBaseState, eventTimeMs);
@@ -315,6 +409,50 @@ function selectGlobalState(threads: ThreadSessionView[]): DeskPetState {
   });
 
   return top.displayState;
+}
+
+function shouldClearAttention(session: ThreadSessionInternal, event: MonitorEvent): boolean {
+  if (!session.attention) {
+    return false;
+  }
+
+  if (event.kind === "user.message") {
+    return true;
+  }
+
+  if (event.kind === "turn.started") {
+    return true;
+  }
+
+  if (
+    session.attention.kind === "waiting_on_approval" &&
+    event.kind === "thread.status.changed" &&
+    !event.activeFlags?.includes("waitingOnApproval")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildApprovalDetail(event: MonitorEvent): string | undefined {
+  if (event.sourceLabel && event.turnId) {
+    return `Approval requested from ${event.sourceLabel} on turn ${shortId(event.turnId)}`;
+  }
+
+  if (event.turnId) {
+    return `Approval requested on turn ${shortId(event.turnId)}`;
+  }
+
+  return event.sourceLabel ? `Approval requested from ${event.sourceLabel}` : undefined;
+}
+
+function shortId(value: string): string {
+  return value.length <= 12 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function cloneAttention(value: AttentionSnapshot | undefined): AttentionSnapshot | undefined {
+  return value ? { ...value } : undefined;
 }
 
 function getSessionKey(sourceId: string | undefined, threadId: string): string {

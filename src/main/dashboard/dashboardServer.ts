@@ -9,6 +9,13 @@ interface DashboardServerOptions {
   staticRoot: string;
   runtime: CodexRuntime;
   port?: number;
+  onAttentionHook?: (input: {
+    title: string;
+    detail?: string;
+    open?: boolean;
+  }) => Promise<void> | void;
+  onClearAttention?: () => Promise<void> | void;
+  onOpenTarget?: () => Promise<void> | void;
 }
 
 interface SseClient {
@@ -90,6 +97,21 @@ export class DashboardServer {
       return;
     }
 
+    if (method === "POST" && url.pathname === "/api/attention") {
+      await this.handleAttention(request, response);
+      return;
+    }
+
+    if (method === "POST" && url.pathname === "/api/attention/clear") {
+      await this.handleClearAttention(response);
+      return;
+    }
+
+    if (method === "POST" && url.pathname === "/api/open") {
+      await this.handleOpenTarget(response);
+      return;
+    }
+
     if (method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
       await this.serveStatic(response, "src/dashboard/index.html");
       return;
@@ -153,6 +175,50 @@ export class DashboardServer {
 
       const result = await this.options.runtime.runPrompt(prompt);
       this.json(response, 202, result);
+    } catch (error) {
+      this.json(response, 500, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  private async handleAttention(
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
+    try {
+      const body = await readJsonBody<{ title?: string; detail?: string; open?: boolean }>(request);
+      const title = body.title?.trim() || "Codex needs your attention";
+
+      await this.options.onAttentionHook?.({
+        title,
+        detail: body.detail?.trim() || undefined,
+        open: body.open === true
+      });
+
+      this.json(response, 202, { ok: true, title });
+    } catch (error) {
+      this.json(response, 500, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  private async handleClearAttention(response: ServerResponse): Promise<void> {
+    try {
+      await this.options.onClearAttention?.();
+      this.json(response, 202, { ok: true });
+    } catch (error) {
+      this.json(response, 500, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  private async handleOpenTarget(response: ServerResponse): Promise<void> {
+    try {
+      await this.options.onOpenTarget?.();
+      this.json(response, 202, { ok: true });
     } catch (error) {
       this.json(response, 500, {
         error: error instanceof Error ? error.message : String(error)

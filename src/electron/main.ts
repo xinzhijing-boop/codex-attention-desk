@@ -1,4 +1,21 @@
-import {
+import type { BrowserWindow as BrowserWindowType, Tray as TrayType } from "electron";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { CodexRuntime } from "./runtime.js";
+import { SettingsStore, type PersistedSettings, type SizeKey } from "./settingsStore.js";
+import { DashboardServer } from "../main/dashboard/dashboardServer.js";
+import type {
+  AttentionSnapshot,
+  AppearanceConfig,
+  BubbleConfig,
+  BubbleDetailMode,
+  BubbleRenderMeta,
+  DesktopPetSnapshot,
+  DeskPetState
+} from "../shared/types.js";
+const {
   app,
   BrowserWindow,
   dialog,
@@ -8,20 +25,7 @@ import {
   screen,
   shell,
   Tray
-} from "electron";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import { CodexRuntime } from "./runtime.js";
-import { SettingsStore, type PersistedSettings, type SizeKey } from "./settingsStore.js";
-import { DashboardServer } from "../main/dashboard/dashboardServer.js";
-import type {
-  AppearanceConfig,
-  BubbleConfig,
-  BubbleDetailMode,
-  BubbleRenderMeta,
-  DesktopPetSnapshot,
-  DeskPetState
-} from "../shared/types.js";
+} = createRequire(import.meta.url)("electron") as typeof import("electron");
 type PetState =
   | "disconnected"
   | "idle"
@@ -107,8 +111,8 @@ const OBJ_SCALE_H = 1.3;
 const OBJ_OFF_X = -0.45;
 const OBJ_OFF_Y = -0.25;
 
-let mainWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
+let mainWindow: BrowserWindowType | null = null;
+let tray: TrayType | null = null;
 let isQuitting = false;
 let currentSize: SizeKey = "M";
 let latestSnapshot!: DesktopPetSnapshot;
@@ -142,16 +146,20 @@ let debugStateOverride: DeskPetState | null = null;
 let bubbleVisible = true;
 let bubbleDetailMode: BubbleDetailMode = "basic";
 let bubbleSpacingPx = DEFAULT_BUBBLE_SPACING_PX;
+let autoOpenAttention = false;
+let attentionCommand: string | undefined;
 let accentColor: string | undefined;
 let runtime!: CodexRuntime;
 let settingsStore!: SettingsStore;
 let dashboardServer: DashboardServer | null = null;
 let dashboardPort: number | null = null;
+let lastHandledAttentionId: string | null = null;
 const configuredExternalUrl = process.env.CODEX_APP_SERVER_URL?.trim();
 const configuredExternalUrls = [
   ...(process.env.CODEX_APP_SERVER_URLS ?? "").split(/[\n,]/).map((value) => value.trim()),
   configuredExternalUrl ?? ""
 ].filter(Boolean);
+const configuredDashboardPort = Number(process.env.CODEX_ATTENTION_PORT ?? "4580");
 const ACCENT_PRESETS = [
   { label: "默认蓝紫", value: undefined },
   { label: "珊瑚橙", value: "#ff7a59" },
@@ -194,11 +202,14 @@ app.whenReady().then(async () => {
   runtime.onSnapshot((snapshot) => {
     latestSnapshot = snapshot;
     refreshFromRuntime();
+    handleAttentionChange(snapshot);
     updateTrayMenu(snapshot);
   });
 
+  await ensureDashboardServer();
   await runtime.start();
   refreshFromRuntime();
+  handleAttentionChange(latestSnapshot);
 });
 
 async function shutdown(): Promise<void> {
@@ -274,7 +285,7 @@ function createTray(): void {
   );
 
   tray = new Tray(trayIcon.resize({ width: 18, height: 18 }));
-  tray.setToolTip("Codex on Desk");
+  tray.setToolTip("Codex Attention Desk");
   tray.on("double-click", () => {
     toggleWindowVisibility();
   });
@@ -386,6 +397,51 @@ function updateTrayMenu(snapshot: DesktopPetSnapshot): void {
       }
     }
   ];
+  const activeAttention = snapshot.attention;
+  const attentionMenu: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: autoOpenAttention ? "自动弹出 Codex: 开" : "自动弹出 Codex: 关",
+      type: "checkbox",
+      checked: autoOpenAttention,
+      click: () => {
+        void setAutoOpenAttention(!autoOpenAttention);
+      }
+    },
+    {
+      label: "立即打开 Codex",
+      click: () => {
+        void openAttentionTarget(activeAttention);
+      }
+    },
+    {
+      label: `当前命令: ${truncateMenuLabel(getConfiguredAttentionCommand(activeAttention))}`,
+      enabled: false
+    },
+    {
+      label: "设置打开命令...",
+      click: () => {
+        void promptForAttentionCommand();
+      }
+    },
+    {
+      label: "测试提醒弹窗",
+      click: () => {
+        runtime.raiseManualAttention({
+          kind: "manual",
+          title: "Manual attention test",
+          detail: "This is a local reminder hook test.",
+          cwd: projectRoot
+        });
+      }
+    },
+    {
+      label: "清除手动提醒",
+      enabled: Boolean(snapshot.attention?.source === "hook"),
+      click: () => {
+        runtime.clearManualAttention();
+      }
+    }
+  ];
 
   const menu = Menu.buildFromTemplate([
     {
@@ -480,6 +536,10 @@ function updateTrayMenu(snapshot: DesktopPetSnapshot): void {
       submenu: connectionMenu
     },
     {
+      label: "提醒与弹出",
+      submenu: attentionMenu
+    },
+    {
       label: "运行测试 Prompt",
       enabled: snapshot.connection.mode === "managed",
       click: () => {
@@ -509,6 +569,14 @@ function updateTrayMenu(snapshot: DesktopPetSnapshot): void {
         snapshot.runtimeStatus === "error"
           ? `连接错误: ${snapshot.errorMessage ?? snapshot.connection.errorMessage ?? "unknown"}`
           : `平台: ${snapshot.monitor.serverPlatform ?? "unknown"}`
+    },
+    {
+      label: `Hook: ${dashboardPort ? `http://127.0.0.1:${dashboardPort}` : "starting"}`
+    },
+    {
+      label: activeAttention
+        ? `提醒: ${activeAttention.title}`
+        : "提醒: none"
     },
     { type: "separator" },
     {
@@ -771,6 +839,51 @@ function mapSnapshotToMiniPresentation(snapshot: DesktopPetSnapshot): PetPresent
   return { state: "mini-idle", svg: "clawd-mini-idle.svg" };
 }
 
+function handleAttentionChange(snapshot: DesktopPetSnapshot): void {
+  const attention = snapshot.attention;
+
+  if (!attention) {
+    lastHandledAttentionId = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.flashFrame(false);
+    }
+    return;
+  }
+
+  if (attention.id === lastHandledAttentionId) {
+    return;
+  }
+
+  lastHandledAttentionId = attention.id;
+  revealAttentionWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.flashFrame(true);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.flashFrame(false);
+      }
+    }, 4_000);
+  }
+
+  if (autoOpenAttention) {
+    void openAttentionTarget(attention);
+  }
+}
+
+function revealAttentionWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (miniMode) {
+    exitMiniMode();
+  }
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+  mainWindow.focus();
+}
+
 function applyPresentation(next: PetPresentation): void {
   if (next.state === currentPresentation.state && next.svg === currentPresentation.svg) {
     return;
@@ -851,6 +964,19 @@ function getAppearanceConfig(): AppearanceConfig {
 }
 
 function buildBubbleRenderMeta(snapshot: DesktopPetSnapshot): BubbleRenderMeta {
+  if (snapshot.attention) {
+    return {
+      badgeOverride: snapshot.attention.kind === "plan_ready" ? "Plan" : "Alert",
+      titleOverride: snapshot.attention.title,
+      detailOverride:
+        bubbleDetailMode === "detailed"
+          ? [snapshot.attention.detail, snapshot.attention.sourceLabel && `source ${formatBubbleSource(snapshot.attention.sourceLabel)}`]
+              .filter((value): value is string => Boolean(value))
+              .join(" | ")
+          : snapshot.attention.detail
+    };
+  }
+
   if (bubbleDetailMode !== "detailed") {
     return {};
   }
@@ -1190,7 +1316,24 @@ async function ensureDashboardServer(): Promise<string | null> {
     dashboardServer = new DashboardServer({
       staticRoot: projectRoot,
       runtime,
-      port: 0
+      port: Number.isInteger(configuredDashboardPort) && configuredDashboardPort > 0 ? configuredDashboardPort : 4580,
+      onAttentionHook: async ({ title, detail, open }) => {
+        runtime.raiseManualAttention({
+          kind: "manual",
+          title,
+          detail,
+          cwd: latestSnapshot?.attention?.cwd ?? latestSnapshot?.monitor.threads.find((thread) => thread.cwd)?.cwd ?? projectRoot
+        });
+        if (open) {
+          await openAttentionTarget(latestSnapshot?.attention);
+        }
+      },
+      onClearAttention: async () => {
+        runtime.clearManualAttention();
+      },
+      onOpenTarget: async () => {
+        await openAttentionTarget(latestSnapshot?.attention);
+      }
     });
   }
 
@@ -1199,6 +1342,44 @@ async function ensureDashboardServer(): Promise<string | null> {
     dashboardPort = started.port;
     return `http://127.0.0.1:${dashboardPort}`;
   } catch (error) {
+    if (
+      dashboardServer &&
+      error instanceof Error &&
+      /EADDRINUSE/i.test(error.message) &&
+      configuredDashboardPort !== 0
+    ) {
+      dashboardServer = new DashboardServer({
+        staticRoot: projectRoot,
+        runtime,
+        port: 0,
+        onAttentionHook: async ({ title, detail, open }) => {
+          runtime.raiseManualAttention({
+            kind: "manual",
+            title,
+            detail,
+            cwd: latestSnapshot?.attention?.cwd ?? latestSnapshot?.monitor.threads.find((thread) => thread.cwd)?.cwd ?? projectRoot
+          });
+          if (open) {
+            await openAttentionTarget(latestSnapshot?.attention);
+          }
+        },
+        onClearAttention: async () => {
+          runtime.clearManualAttention();
+        },
+        onOpenTarget: async () => {
+          await openAttentionTarget(latestSnapshot?.attention);
+        }
+      });
+
+      try {
+        const started = await dashboardServer.start();
+        dashboardPort = started.port;
+        return `http://127.0.0.1:${dashboardPort}`;
+      } catch (fallbackError) {
+        error = fallbackError;
+      }
+    }
+
     dashboardServer = null;
     dashboardPort = null;
     const options = {
@@ -1339,6 +1520,8 @@ function applyPersistedSettings(settings: PersistedSettings): void {
   bubbleSpacingPx = normalizeBubbleSpacing(
     settings.bubbleSpacingPx + BUBBLE_SPACING_BASELINE_SHIFT_PX
   );
+  autoOpenAttention = settings.autoOpenAttention;
+  attentionCommand = settings.attentionCommand;
   accentColor = settings.accentColor;
 }
 
@@ -1384,6 +1567,8 @@ async function persistSettings(): Promise<void> {
     bubbleDetailMode,
     bubbleSpacingPx,
     connectionMode: latestSnapshot?.connection.mode ?? "auto",
+    autoOpenAttention,
+    attentionCommand,
     accentColor
   });
 }
@@ -1394,6 +1579,66 @@ async function setAccentColor(nextColor?: string): Promise<void> {
   updateTrayMenu(latestSnapshot);
   sendToRenderer("appearance-config-change", getAppearanceConfig());
   await persistSettings();
+}
+
+async function setAutoOpenAttention(value: boolean): Promise<void> {
+  autoOpenAttention = value;
+  updateTrayMenu(latestSnapshot);
+  await persistSettings();
+}
+
+function getConfiguredAttentionCommand(attention?: AttentionSnapshot | null): string {
+  const configured = attentionCommand ?? process.env.CODEX_ATTENTION_OPEN_COMMAND?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  const targetCwd =
+    attention?.cwd ??
+    latestSnapshot?.attention?.cwd ??
+    latestSnapshot?.monitor.threads.find((thread) => thread.cwd)?.cwd ??
+    projectRoot;
+
+  return buildDefaultAttentionCommand(targetCwd);
+}
+
+function buildDefaultAttentionCommand(targetCwd: string): string {
+  const quotedCwd = `"${targetCwd}"`;
+
+  if (process.platform === "darwin") {
+    return `open -a "Visual Studio Code" ${quotedCwd}`;
+  }
+
+  return `code -r ${quotedCwd}`;
+}
+
+async function openAttentionTarget(attention?: AttentionSnapshot | null): Promise<void> {
+  const command = getConfiguredAttentionCommand(attention);
+
+  try {
+    const child = spawn(command, {
+      shell: true,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true
+    });
+    child.unref();
+  } catch (error) {
+    const options = {
+      type: "error",
+      message: "Unable to open Codex target",
+      detail: error instanceof Error ? error.message : String(error)
+    } as const;
+    if (mainWindow) {
+      await dialog.showMessageBox(mainWindow, options);
+    } else {
+      await dialog.showMessageBox(options);
+    }
+  }
+}
+
+function truncateMenuLabel(value: string, maxLength = 48): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`;
 }
 
 function formatBubbleSource(sourceLabel: string): string {
@@ -1408,6 +1653,10 @@ function formatShortId(value: string): string {
 
 function formatEventLabel(eventKind: string): string {
   switch (eventKind) {
+    case "assistant.message":
+      return "回复";
+    case "user.message":
+      return "用户消息";
     case "item.agentMessage.delta":
       return "回复";
     case "item.reasoning.delta":
@@ -1422,6 +1671,8 @@ function formatEventLabel(eventKind: string): string {
       return "结束";
     case "thread.status.changed":
       return "状态变化";
+    case "tool.request_user_input":
+      return "请求输入";
     default:
       return eventKind.replace(/^notification\./, "").replaceAll(".", " ");
   }
@@ -1467,6 +1718,23 @@ async function promptForBubbleSpacing(): Promise<void> {
   }
 
   await setBubbleSpacing(nextSpacingPx);
+}
+
+async function promptForAttentionCommand(): Promise<void> {
+  const value = await showTextInputDialog({
+    title: "Set Codex open command",
+    message:
+      "Run this command when attention needs to pop Codex. Leave blank to use the default workspace opener.",
+    defaultValue: attentionCommand ?? ""
+  });
+
+  if (value === null) {
+    return;
+  }
+
+  attentionCommand = value.trim() || undefined;
+  updateTrayMenu(latestSnapshot);
+  await persistSettings();
 }
 
 async function promptForAccentColor(): Promise<void> {

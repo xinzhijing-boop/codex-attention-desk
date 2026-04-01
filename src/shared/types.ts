@@ -79,6 +79,14 @@ export interface TurnStartResult {
   };
 }
 
+export type AttentionKind =
+  | "waiting_on_approval"
+  | "request_user_input"
+  | "plan_question"
+  | "plan_ready"
+  | "assistant_question"
+  | "manual";
+
 export type DeskPetState =
   | "idle"
   | "thinking"
@@ -92,22 +100,41 @@ export type DeskPetState =
   | "success"
   | "sleeping";
 
+export interface AttentionSnapshot {
+  id: string;
+  kind: AttentionKind;
+  source: "codex" | "hook";
+  title: string;
+  detail?: string;
+  detectedAt: string;
+  sourceId?: string;
+  sourceLabel?: string;
+  threadId?: string;
+  turnId?: string;
+  cwd?: string;
+}
+
 export interface MonitorEvent {
   timestamp: string;
   kind: string;
   sourceId?: string;
   sourceLabel?: string;
+  cwd?: string;
   stateHint?: DeskPetState;
   threadId?: string;
   turnId?: string;
   itemId?: string;
   itemType?: string;
+  messageRole?: string;
+  messageText?: string;
+  phase?: string;
   status?: string;
   activeFlags?: string[];
   delta?: string;
   preview?: string;
   requestMethod?: string;
   error?: string;
+  attention?: AttentionSnapshot;
   raw: unknown;
 }
 
@@ -115,6 +142,7 @@ export interface ThreadSessionView {
   sourceId?: string;
   sourceLabel?: string;
   threadId: string;
+  cwd?: string;
   baseState: DeskPetState;
   displayState: DeskPetState;
   status?: string;
@@ -122,9 +150,12 @@ export interface ThreadSessionView {
   currentTurnId?: string;
   lastEventKind: string;
   lastItemType?: string;
+  lastMessageRole?: string;
+  lastMessageText?: string;
   lastDelta?: string;
   lastPreview?: string;
   lastError?: string;
+  attention?: AttentionSnapshot;
   eventCount: number;
   updatedAt: string;
 }
@@ -172,6 +203,8 @@ export interface BubbleConfig {
 }
 
 export interface BubbleRenderMeta {
+  badgeOverride?: string;
+  titleOverride?: string;
   detailOverride?: string;
 }
 
@@ -187,4 +220,5 @@ export interface DesktopPetSnapshot {
   errorMessage?: string;
   connection: ConnectionDebugInfo;
   monitor: MonitorSnapshot;
+  attention?: AttentionSnapshot;
 }

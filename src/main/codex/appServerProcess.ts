@@ -49,7 +49,7 @@ export class AppServerProcess {
         "--listen",
         this.listenUrl,
         "--session-source",
-        this.options.sessionSource ?? "codex-on-desk"
+        this.options.sessionSource ?? "codex-attention-desk"
       ],
       {
         cwd: this.options.cwd,

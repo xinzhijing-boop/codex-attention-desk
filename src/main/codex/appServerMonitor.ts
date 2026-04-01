@@ -257,8 +257,8 @@ export class AppServerMonitor {
         "initialize",
         {
           clientInfo: {
-            name: "codex-on-desk-monitor",
-            title: "Codex on Desk Phase 0 Monitor",
+            name: "codex-attention-desk-monitor",
+            title: "Codex Attention Desk Monitor",
             version: "0.1.0"
           },
           capabilities: {

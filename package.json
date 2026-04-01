@@ -1,7 +1,8 @@
 {
-  "name": "codex-on-desk",
-  "version": "0.1.3",
+  "name": "codex-attention-desk",
+  "version": "0.2.0",
   "private": true,
+  "description": "Electron desk helper for Codex status, user-attention prompts, and local popup hooks.",
   "license": "MIT",
   "type": "module",
   "main": "dist/electron/electron/main.js",
@@ -10,7 +11,7 @@
     "dashboard": "tsx scripts/dashboard.ts",
     "social:svg": "node scripts/generate-social-svgs.mjs",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "electron": "npm run build:electron && electron dist/electron/electron/main.js",
+    "electron": "npm run build:electron && node scripts/start-electron.mjs",
     "dist": "npm run build:electron && npm exec --yes --package electron-builder@26.8.1 electron-builder",
     "dist:dir": "npm run build:electron && npm exec --yes --package electron-builder@26.8.1 electron-builder -- --dir",
     "dist:mac": "npm run build:electron && npm exec --yes --package electron-builder@26.8.1 electron-builder -- --mac",
@@ -19,8 +20,8 @@
     "typecheck": "tsc --noEmit"
   },
   "build": {
-    "appId": "com.gshisi.codexondesk",
-    "productName": "Codex on Desk",
+    "appId": "com.xinzhijing.codexattentiondesk",
+    "productName": "Codex Attention Desk",
     "asar": true,
     "directories": {
       "output": "release"

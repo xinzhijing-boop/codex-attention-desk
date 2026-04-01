@@ -21,7 +21,7 @@ jobs:
             runner: macos-15
             npm_script: dist:mac
             npm_args: --arm64 --publish never
-            artifact_name: codex-on-desk-macos-arm64
+            artifact_name: codex-attention-desk-macos-arm64
             artifact_paths: |
               release/*.dmg
               release/*-mac.zip
@@ -31,7 +31,7 @@ jobs:
             runner: macos-15-intel
             npm_script: dist:mac
             npm_args: --x64 --publish never
-            artifact_name: codex-on-desk-macos-x64
+            artifact_name: codex-attention-desk-macos-x64
             artifact_paths: |
               release/*.dmg
               release/*-mac.zip
@@ -41,7 +41,7 @@ jobs:
             runner: windows-latest
             npm_script: dist:win
             npm_args: --x64 --publish never
-            artifact_name: codex-on-desk-windows
+            artifact_name: codex-attention-desk-windows
             artifact_paths: |
               release/*.exe
               release/*.zip
@@ -82,7 +82,7 @@ jobs:
       - name: Download Desktop Artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: codex-on-desk-*
+          pattern: codex-attention-desk-*
           path: release-assets
           merge-multiple: true
 

@@ -13,6 +13,8 @@ export interface PersistedSettings {
   bubbleDetailMode: BubbleDetailMode;
   bubbleSpacingPx: number;
   connectionMode: AppServerConnectionMode;
+  autoOpenAttention: boolean;
+  attentionCommand?: string;
   accentColor?: string;
 }
 
@@ -26,6 +28,8 @@ const DEFAULT_SETTINGS: PersistedSettings = {
   bubbleDetailMode: "basic",
   bubbleSpacingPx: DEFAULT_BUBBLE_SPACING_PX,
   connectionMode: "auto",
+  autoOpenAttention: false,
+  attentionCommand: undefined,
   accentColor: undefined
 };
 
@@ -69,6 +73,11 @@ function sanitizeSettings(settings: Partial<PersistedSettings>): PersistedSettin
       settings.connectionMode === "auto"
         ? settings.connectionMode
         : DEFAULT_SETTINGS.connectionMode,
+    autoOpenAttention:
+      typeof settings.autoOpenAttention === "boolean"
+        ? settings.autoOpenAttention
+        : DEFAULT_SETTINGS.autoOpenAttention,
+    attentionCommand: normalizeCommand(settings.attentionCommand),
     accentColor: normalizeAccentColor(settings.accentColor)
   };
 }
@@ -99,4 +108,13 @@ function normalizeBubbleSpacing(value: unknown): number {
     MIN_BUBBLE_SPACING_PX,
     Math.min(MAX_BUBBLE_SPACING_PX, Math.round(value))
   );
+}
+
+function normalizeCommand(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
