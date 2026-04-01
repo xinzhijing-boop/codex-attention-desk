@@ -1089,10 +1089,15 @@ function formatSessionLabel(thread: ThreadSessionView): string {
   }
 
   if (thread.sourceLabel) {
-    return formatBubbleSource(thread.sourceLabel);
+    return normalizeSessionSourceLabel(thread.sourceLabel);
   }
 
   return `Thread ${formatShortId(thread.threadId)}`;
+}
+
+function normalizeSessionSourceLabel(sourceLabel: string): string {
+  const compact = sourceLabel.trim().replace(/\.jsonl$/i, "");
+  return compact || sourceLabel;
 }
 
 function compactWorkspaceLabel(value: string): string {
