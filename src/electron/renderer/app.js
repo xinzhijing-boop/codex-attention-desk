@@ -158,7 +158,7 @@ const STATE_META = {
   },
   thinking: {
     badge: "Think",
-    title: "Thinking",
+    title: "Planning Next Step",
     titleZh: "思考中",
     detail: "Organizing context and planning the next step",
     detailZh: "正在整理上下文和计划下一步动作",
@@ -166,7 +166,7 @@ const STATE_META = {
   },
   working: {
     badge: "Work",
-    title: "Working",
+    title: "Running Task",
     titleZh: "执行中",
     detail: "Running commands or handling the current task",
     detailZh: "正在运行命令或处理当前任务",
@@ -198,7 +198,7 @@ const STATE_META = {
   },
   attention: {
     badge: "Done",
-    title: "Task Finished",
+    title: "Finished",
     titleZh: "任务完成",
     detail: "This round is done and the pet is celebrating",
     detailZh: "这一轮已经结束，桌宠进入庆祝状态",
