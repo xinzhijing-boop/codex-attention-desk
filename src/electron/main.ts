@@ -129,6 +129,8 @@ let currentHitBox: HitBox = HIT_BOXES.default;
 let dragLocked = false;
 let cursorPollingPaused = false;
 let mouseOverPet = false;
+let mouseOverBubble = false;
+let mouseOverInteractive = false;
 let miniMode = false;
 let miniPeeked = false;
 let miniDock: MiniDockState | null = null;
@@ -1007,9 +1009,9 @@ function buildBubbleRenderMeta(snapshot: DesktopPetSnapshot): BubbleRenderMeta {
   }
 
   const detailParts = [
-    thread.sourceLabel ? `来源 ${formatBubbleSource(thread.sourceLabel)}` : undefined,
-    `线程 ${formatShortId(thread.threadId)}`,
-    `事件 ${formatEventLabel(thread.lastEventKind)}`
+    thread.sourceLabel ? `Source ${formatBubbleSource(thread.sourceLabel)}` : undefined,
+    `Thread ${formatShortId(thread.threadId)}`,
+    `Event ${formatEventLabel(thread.lastEventKind)}`
   ].filter((value): value is string => Boolean(value));
 
   return {
@@ -1035,16 +1037,23 @@ function startMainTick(): void {
     const bounds = mainWindow.getBounds();
 
     if (!dragLocked) {
-      const hit = getHitRectScreen(bounds);
-      const over =
-        cursor.x >= hit.left &&
-        cursor.x <= hit.right &&
-        cursor.y >= hit.top &&
-        cursor.y <= hit.bottom;
+      const petHit = getHitRectScreen(bounds);
+      const bubbleHit = getBubbleHitRectScreen(bounds);
+      const overPet = isPointInsideRect(cursor, petHit);
+      const overBubble = bubbleHit ? isPointInsideRect(cursor, bubbleHit) : false;
+      const overInteractive = overPet || overBubble;
 
-      if (over !== mouseOverPet) {
-        mouseOverPet = over;
-        mainWindow.setIgnoreMouseEvents(!over, { forward: true });
+      if (overPet !== mouseOverPet) {
+        mouseOverPet = overPet;
+      }
+
+      if (overBubble !== mouseOverBubble) {
+        mouseOverBubble = overBubble;
+      }
+
+      if (overInteractive !== mouseOverInteractive) {
+        mouseOverInteractive = overInteractive;
+        mainWindow.setIgnoreMouseEvents(!overInteractive, { forward: true });
       }
     }
 
@@ -2014,6 +2023,42 @@ function getHitRectScreen(bounds: Electron.Rectangle): {
     right: offsetX + (currentHitBox.x + 15 + currentHitBox.w) * scale,
     bottom: offsetY + (currentHitBox.y + 25 + currentHitBox.h) * scale
   };
+}
+
+function getBubbleHitRectScreen(
+  bounds: Electron.Rectangle
+): { left: number; top: number; right: number; bottom: number } | null {
+  if (!bubbleVisible) {
+    return null;
+  }
+
+  const width = Math.min(208, Math.max(0, bounds.width - 24));
+  if (width <= 0) {
+    return null;
+  }
+
+  const left = Math.round(bounds.x + bounds.width / 2 - width / 2);
+  const top = bounds.y + 8;
+  const height = bubbleDetailMode === "detailed" ? 88 : 72;
+
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height
+  };
+}
+
+function isPointInsideRect(
+  point: { x: number; y: number },
+  rect: { left: number; top: number; right: number; bottom: number }
+): boolean {
+  return (
+    point.x >= rect.left &&
+    point.x <= rect.right &&
+    point.y >= rect.top &&
+    point.y <= rect.bottom
+  );
 }
 
 function getHitBoxForSvg(svg: string): HitBox {

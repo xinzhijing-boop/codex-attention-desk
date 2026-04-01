@@ -116,7 +116,8 @@ body {
     transform 220ms ease,
     box-shadow 220ms ease,
     border-color 220ms ease;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 #status-bubble.is-hidden {
@@ -128,30 +129,30 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 20px;
-  padding: 0 8px;
+  min-height: 18px;
+  padding: 0 7px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.75);
   color: var(--accent);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 #status-title {
-  margin-top: 6px;
+  margin-top: 5px;
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.1;
 }
 
 #status-detail {
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--text-subtle);
-  font-size: 10px;
-  line-height: 1.25;
+  font-size: 8px;
+  line-height: 1.2;
 }
 
 #pet-container {

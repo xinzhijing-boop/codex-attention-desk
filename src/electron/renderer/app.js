@@ -28,6 +28,7 @@ let bubbleConfig = {
   detailMode: "basic",
   spacingPx: 0
 };
+let languageExpanded = false;
 let appearanceConfig = {
   accentColor: undefined
 };
@@ -69,113 +70,156 @@ function flushPendingDrag() {
 const STATE_META = {
   disconnected: {
     badge: "Codex",
-    title: "连接中",
-    detail: "正在尝试连接本地运行时",
+    title: "Connecting",
+    titleZh: "连接中",
+    detail: "Trying to connect to the local runtime",
+    detailZh: "正在尝试连接本地运行时",
     persist: true
   },
   idle: {
     badge: "Idle",
-    title: "待命中",
-    detail: "桌宠保持观察，有新任务时会立刻动起来",
+    title: "Standing By",
+    titleZh: "待命中",
+    detail: "Watching quietly and ready for the next task",
+    detailZh: "桌宠保持观察，有新任务时会立刻动起来",
     autoHideMs: 1800
   },
   yawning: {
     badge: "Rest",
-    title: "有点困了",
-    detail: "长时间没有活动，准备进入休息状态",
+    title: "Getting Sleepy",
+    titleZh: "有点困了",
+    detail: "No recent activity, easing toward rest mode",
+    detailZh: "长时间没有活动，准备进入休息状态",
     autoHideMs: 2000
   },
   dozing: {
     badge: "Rest",
-    title: "打盹中",
-    detail: "轻度休眠，鼠标一动就会醒",
+    title: "Dozing",
+    titleZh: "打盹中",
+    detail: "Light sleep, ready to wake on movement",
+    detailZh: "轻度休眠，鼠标一动就会醒",
     autoHideMs: 2200
   },
   sleeping: {
     badge: "Sleep",
-    title: "睡着了",
-    detail: "当前没有任务，桌宠已进入深度休息",
+    title: "Sleeping",
+    titleZh: "睡着了",
+    detail: "No current task, now in deep rest",
+    detailZh: "当前没有任务，桌宠已进入深度休息",
     autoHideMs: 2400
   },
   waking: {
     badge: "Wake",
-    title: "醒了",
-    detail: "检测到活动，正在回到待命状态",
+    title: "Awake Again",
+    titleZh: "醒了",
+    detail: "Activity detected, returning to standby",
+    detailZh: "检测到活动，正在回到待命状态",
     autoHideMs: 1400
   },
   "mini-idle": {
     badge: "Mini",
-    title: "贴边待命",
-    detail: "停靠在屏幕右侧，经过时会探头",
+    title: "Docked",
+    titleZh: "贴边待命",
+    detail: "Docked at the screen edge and ready to peek",
+    detailZh: "停靠在屏幕右侧，经过时会探头",
     autoHideMs: 1400
   },
   "mini-peek": {
     badge: "Mini",
-    title: "探头中",
-    detail: "靠近它时会主动看过来",
+    title: "Peeking",
+    titleZh: "探头中",
+    detail: "It notices you when you move near it",
+    detailZh: "靠近它时会主动看过来",
     autoHideMs: 1400
   },
   "mini-alert": {
     badge: "Alert",
-    title: "有提醒",
-    detail: "出现异常或需要你留意的状态",
+    title: "Needs Attention",
+    titleZh: "有提醒",
+    detail: "Something needs a quick look",
+    detailZh: "出现异常或需要你留意的状态",
     persist: true
   },
   "mini-happy": {
     badge: "Done",
-    title: "完成了",
-    detail: "任务顺利结束，给你一个小反馈",
+    title: "Done",
+    titleZh: "完成了",
+    detail: "A small celebration for a finished task",
+    detailZh: "任务顺利结束，给你一个小反馈",
     autoHideMs: 1800
   },
   "mini-sleep": {
     badge: "Sleep",
-    title: "贴边休眠",
-    detail: "长时间空闲后会在边缘安静睡觉",
+    title: "Docked Sleep",
+    titleZh: "贴边休眠",
+    detail: "Quietly sleeping at the edge after a long idle stretch",
+    detailZh: "长时间空闲后会在边缘安静睡觉",
     autoHideMs: 2200
   },
   thinking: {
     badge: "Think",
-    title: "思考中",
-    detail: "正在整理上下文和计划下一步动作",
+    title: "Thinking",
+    titleZh: "思考中",
+    detail: "Organizing context and planning the next step",
+    detailZh: "正在整理上下文和计划下一步动作",
     persist: true
   },
   working: {
     badge: "Work",
-    title: "执行中",
-    detail: "正在运行命令或处理当前任务",
+    title: "Working",
+    titleZh: "执行中",
+    detail: "Running commands or handling the current task",
+    detailZh: "正在运行命令或处理当前任务",
     persist: true
   },
   juggling: {
     badge: "Multi",
-    title: "多线程忙碌",
-    detail: "正在并行处理多个代理或多个任务片段",
+    title: "Handling Multiple Threads",
+    titleZh: "多线程忙碌",
+    detail: "Processing several agents or task slices in parallel",
+    detailZh: "正在并行处理多个代理或多个任务片段",
     persist: true
   },
   notification: {
     badge: "Alert",
-    title: "需要注意",
-    detail: "当前状态需要你看一眼",
+    title: "Please Check",
+    titleZh: "需要注意",
+    detail: "This state needs a quick glance from you",
+    detailZh: "当前状态需要你看一眼",
     persist: true
   },
   error: {
     badge: "Error",
-    title: "出了点问题",
-    detail: "本轮任务遇到错误，建议查看最近事件",
+    title: "Something Went Wrong",
+    titleZh: "出了点问题",
+    detail: "This run hit an error, so the recent events are worth checking",
+    detailZh: "本轮任务遇到错误，建议查看最近事件",
     persist: true
   },
   attention: {
     badge: "Done",
-    title: "任务完成",
-    detail: "这一轮已经结束，桌宠进入庆祝状态",
+    title: "Task Finished",
+    titleZh: "任务完成",
+    detail: "This round is done and the pet is celebrating",
+    detailZh: "这一轮已经结束，桌宠进入庆祝状态",
     autoHideMs: 2200
   },
   carrying: {
     badge: "Edit",
-    title: "正在改文件",
-    detail: "当前重点在文件变更和内容调整",
+    title: "Editing Files",
+    titleZh: "正在改文件",
+    detail: "Focused on file changes and content updates",
+    detailZh: "当前重点在文件变更和内容调整",
     persist: true
   }
 };
+
+statusBubble.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  languageExpanded = !languageExpanded;
+  renderBubble(currentState, currentMeta ?? undefined);
+});
 
 container.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) {
@@ -494,14 +538,28 @@ function renderBubble(state, meta) {
   const stateMeta = STATE_META[state] ?? {
     badge: "Codex",
     title: state,
-    detail: "状态已更新",
+    titleZh: undefined,
+    detail: "State updated",
+    detailZh: "状态已更新",
     autoHideMs: 1800
   };
 
   statusBadge.textContent = meta?.badgeOverride ?? stateMeta.badge;
   statusTitle.textContent = meta?.titleOverride ?? stateMeta.title;
-  statusDetail.textContent = meta?.detailOverride ?? stateMeta.detail;
-  statusDetail.style.display = bubbleConfig.detailMode === "detailed" ? "" : "none";
+
+  const detailParts = [];
+  if (languageExpanded && stateMeta.titleZh) {
+    detailParts.push(stateMeta.titleZh);
+  }
+  if (bubbleConfig.detailMode === "detailed") {
+    detailParts.push(meta?.detailOverride ?? stateMeta.detail);
+    if (languageExpanded && stateMeta.detailZh) {
+      detailParts.push(stateMeta.detailZh);
+    }
+  }
+
+  statusDetail.textContent = detailParts.join(" | ");
+  statusDetail.style.display = detailParts.length > 0 ? "" : "none";
   statusBubble.classList.remove("is-hidden");
 
   if (bubbleTimer) {
@@ -529,12 +587,19 @@ function playReaction(svgFile, durationMs) {
   swapState(svgFile);
   if (bubbleConfig.visible) {
     statusBadge.textContent = "React";
-    statusTitle.textContent = "戳了一下";
-    statusDetail.textContent =
-      bubbleConfig.detailMode === "detailed"
-        ? "桌宠给了一个短暂的互动反馈 | 来源: 本地交互"
-        : "桌宠给了一个短暂的互动反馈";
-    statusDetail.style.display = bubbleConfig.detailMode === "detailed" ? "" : "none";
+    statusTitle.textContent = "Reacting";
+    const reactionParts = [];
+    if (languageExpanded) {
+      reactionParts.push("戳了一下");
+    }
+    if (bubbleConfig.detailMode === "detailed") {
+      reactionParts.push("A short local interaction response");
+      if (languageExpanded) {
+        reactionParts.push("桌宠给了一个短暂的互动反馈");
+      }
+    }
+    statusDetail.textContent = reactionParts.join(" | ");
+    statusDetail.style.display = reactionParts.length > 0 ? "" : "none";
     statusBubble.classList.remove("is-hidden");
   } else {
     hideBubble();
