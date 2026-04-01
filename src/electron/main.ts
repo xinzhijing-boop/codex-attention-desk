@@ -72,14 +72,14 @@ const preloadEntry = join(__dirname, "preload.js");
 const isMac = process.platform === "darwin";
 
 const SIZES: Record<SizeKey, { width: number; height: number }> = {
-  S: { width: 200, height: 200 },
-  M: { width: 280, height: 280 },
-  L: { width: 360, height: 360 }
+  S: { width: 150, height: 150 },
+  M: { width: 210, height: 210 },
+  L: { width: 270, height: 270 }
 };
 
 const BUBBLE_EXTRA_HEIGHT: Record<BubbleDetailMode, number> = {
   basic: 0,
-  detailed: 68
+  detailed: 52
 };
 const BUBBLE_SPACING_BASELINE_SHIFT_PX = 60;
 const DEFAULT_BUBBLE_SPACING_PX = 0;
